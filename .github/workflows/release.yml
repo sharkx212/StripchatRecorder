@@ -101,6 +101,17 @@ jobs:
         if: matrix.cross
         run: sudo dpkg --add-architecture arm64
 
+      - name: Fix apt sources for arm64 cross-compile
+        if: matrix.cross
+        run: |
+          # Restrict existing amd64 sources to [arch=amd64] so apt doesn't try to
+          # fetch arm64 indexes from security.ubuntu.com (which 404s for arm64).
+          # Then add ports.ubuntu.com as the arm64 source.
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+
       - name: Install Linux cross-compile dependencies (aarch64)
         if: matrix.cross
         env:
