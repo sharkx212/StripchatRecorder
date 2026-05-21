@@ -41,7 +41,7 @@ jobs:
             artifact_suffix: windows-x86_64
 
           - name: macos-x86_64
-            os: macos-13
+            os: macos-14
             target: x86_64-apple-darwin
             artifact_suffix: macos-x86_64
 
@@ -104,13 +104,20 @@ jobs:
       - name: Fix apt sources for arm64 cross-compile
         if: matrix.cross
         run: |
-          # Restrict existing amd64 sources to [arch=amd64] so apt doesn't try to
-          # fetch arm64 indexes from security.ubuntu.com (which 404s for arm64).
-          # Then add ports.ubuntu.com as the arm64 source.
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          # ubuntu-22.04 runner uses deb822 format in sources.list.d/ubuntu.sources.
+          # We need to restrict that file to amd64 only, then add ports.ubuntu.com for arm64.
+          # Step 1: add [arch=amd64] to every Types/URIs block in the deb822 file
+          sudo sed -i '/^Types: deb/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          # Also patch legacy sources.list if it has any entries
+          sudo sed -i 's/^deb \(http\)/deb [arch=amd64] \1/' /etc/apt/sources.list 2>/dev/null || true
+          # Step 2: add ports.ubuntu.com as arm64-only source
+          printf '%s\n' \
+            'Types: deb' \
+            'URIs: http://ports.ubuntu.com/ubuntu-ports' \
+            'Suites: jammy jammy-updates jammy-security jammy-backports' \
+            'Components: main restricted universe multiverse' \
+            'Architectures: arm64' \
+            '' | sudo tee /etc/apt/sources.list.d/arm64-ports.sources
 
       - name: Install Linux cross-compile dependencies (aarch64)
         if: matrix.cross
