@@ -82,7 +82,7 @@ jobs:
 
       # ── Build main binary ──
       - name: Build Tauri binary
-        run: npx tauri build --no-bundle --target ${{ matrix.target }}
+        run: npx tauri build --no-bundle --debug --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -95,7 +95,7 @@ jobs:
             if [ -f "$module_dir/Cargo.toml" ]; then
               echo "Building $module_dir..."
               cargo build --manifest-path "$module_dir/Cargo.toml" \
-                --release --bins --target ${{ matrix.target }}
+                --bins --target ${{ matrix.target }}
             fi
           done
 
@@ -106,7 +106,7 @@ jobs:
           foreach ($mod in @("modules/contact_sheet","modules/filter_short","modules/notify_discord","modules/notify_telegram")) {
             if (Test-Path "$mod/Cargo.toml") {
               Write-Host "Building $mod..."
-              cargo build --manifest-path "$mod/Cargo.toml" --release --bins --target ${{ matrix.target }}
+              cargo build --manifest-path "$mod/Cargo.toml" --bins --target ${{ matrix.target }}
             }
           }
 
@@ -126,12 +126,12 @@ jobs:
           mkdir -p "$PKG/modules"
 
           # Main binary
-          cp "src-tauri/target/${{ matrix.target }}/release/stripchat-recorder" "$PKG/"
+          cp "src-tauri/target/${{ matrix.target }}/debug/stripchat-recorder" "$PKG/"
           chmod +x "$PKG/stripchat-recorder"
 
           # Module binaries
           for module_dir in modules/contact_sheet modules/filter_short modules/notify_discord modules/notify_telegram; do
-            find "$module_dir/target/${{ matrix.target }}/release" \
+            find "$module_dir/target/${{ matrix.target }}/debug" \
               -maxdepth 1 -type f -executable \
               ! -name '*.d' ! -name '*.rlib' ! -name '*.rmeta' \
               -exec cp {} "$PKG/modules/" \;
@@ -151,11 +151,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$pkg/modules" | Out-Null
 
           # Main binary
-          Copy-Item "src-tauri/target/${{ matrix.target }}/release/stripchat-recorder.exe" "$pkg/"
+          Copy-Item "src-tauri/target/${{ matrix.target }}/debug/stripchat-recorder.exe" "$pkg/"
 
           # Module binaries
           foreach ($mod in @("modules/contact_sheet","modules/filter_short","modules/notify_discord","modules/notify_telegram")) {
-            Get-ChildItem "$mod/target/${{ matrix.target }}/release/*.exe" -ErrorAction SilentlyContinue |
+            Get-ChildItem "$mod/target/${{ matrix.target }}/debug/*.exe" -ErrorAction SilentlyContinue |
               Copy-Item -Destination "$pkg/modules/"
           }
 
