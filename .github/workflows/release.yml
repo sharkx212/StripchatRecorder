@@ -15,24 +15,11 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────
-  # Build main binary + all modules per platform
+  # Build main binary + all modules (Linux only)
   # ─────────────────────────────────────────────
   build:
-    name: Build (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x86_64
-            os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            artifact_suffix: linux-x86_64
-
-          - name: windows-x86_64
-            os: windows-2022
-            target: x86_64-pc-windows-msvc
-            artifact_suffix: windows-x86_64
+    name: Build (linux-x86_64)
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -54,8 +41,6 @@ jobs:
       # ── Rust toolchain ──
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -67,11 +52,9 @@ jobs:
             modules/notify_discord
             modules/notify_telegram
             modules/pp_utils
-          key: ${{ matrix.target }}
 
-      # ── Linux: system libraries ──
+      # ── System libraries ──
       - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -82,56 +65,38 @@ jobs:
 
       # ── Build main binary ──
       - name: Build Tauri binary
-        run: npx tauri build --no-bundle --debug --target ${{ matrix.target }}
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --no-bundle --debug
 
       # ── Build modules ──
-      - name: Build modules (Unix)
-        if: runner.os != 'Windows'
+      - name: Build modules
         run: |
           for module_dir in modules/contact_sheet modules/filter_short modules/notify_discord modules/notify_telegram; do
             if [ -f "$module_dir/Cargo.toml" ]; then
               echo "Building $module_dir..."
-              cargo build --manifest-path "$module_dir/Cargo.toml" \
-                --bins --target ${{ matrix.target }}
+              cargo build --manifest-path "$module_dir/Cargo.toml" --bins
             fi
           done
-
-      - name: Build modules (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          foreach ($mod in @("modules/contact_sheet","modules/filter_short","modules/notify_discord","modules/notify_telegram")) {
-            if (Test-Path "$mod/Cargo.toml") {
-              Write-Host "Building $mod..."
-              cargo build --manifest-path "$mod/Cargo.toml" --bins --target ${{ matrix.target }}
-            }
-          }
 
       # ── Assemble package directory ──
       #
       # Layout:
-      #   stripchat-recorder-{platform}/
-      #   ├── stripchat-recorder(.exe)
+      #   stripchat-recorder-linux-x86_64/
+      #   ├── stripchat-recorder
       #   └── modules/
-      #       ├── contact_sheet_v020(.exe)
       #       └── ...
       #
-      - name: Assemble package (Unix)
-        if: runner.os != 'Windows'
+      - name: Assemble package
         run: |
-          PKG="stripchat-recorder-${{ matrix.artifact_suffix }}"
+          PKG="stripchat-recorder-linux-x86_64"
           mkdir -p "$PKG/modules"
 
           # Main binary
-          cp "src-tauri/target/${{ matrix.target }}/debug/stripchat-recorder" "$PKG/"
+          cp "src-tauri/target/debug/stripchat-recorder" "$PKG/"
           chmod +x "$PKG/stripchat-recorder"
 
           # Module binaries
           for module_dir in modules/contact_sheet modules/filter_short modules/notify_discord modules/notify_telegram; do
-            find "$module_dir/target/${{ matrix.target }}/debug" \
+            find "$module_dir/target/debug" \
               -maxdepth 1 -type f -executable \
               ! -name '*.d' ! -name '*.rlib' ! -name '*.rmeta' \
               -exec cp {} "$PKG/modules/" \;
@@ -143,33 +108,11 @@ jobs:
           # Archive
           tar -czf "${PKG}.tar.gz" "$PKG"
 
-      - name: Assemble package (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $pkg = "stripchat-recorder-${{ matrix.artifact_suffix }}"
-          New-Item -ItemType Directory -Force -Path "$pkg/modules" | Out-Null
-
-          # Main binary
-          Copy-Item "src-tauri/target/${{ matrix.target }}/debug/stripchat-recorder.exe" "$pkg/"
-
-          # Module binaries
-          foreach ($mod in @("modules/contact_sheet","modules/filter_short","modules/notify_discord","modules/notify_telegram")) {
-            Get-ChildItem "$mod/target/${{ matrix.target }}/debug/*.exe" -ErrorAction SilentlyContinue |
-              Copy-Item -Destination "$pkg/modules/"
-          }
-
-          Write-Host "=== Package contents ==="
-          Get-ChildItem -Recurse $pkg | Select-Object FullName
-
-          # Archive
-          Compress-Archive -Path $pkg -DestinationPath "${pkg}.zip"
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: stripchat-recorder-${{ matrix.artifact_suffix }}
-          path: stripchat-recorder-${{ matrix.artifact_suffix }}.*
+          name: stripchat-recorder-linux-x86_64
+          path: stripchat-recorder-linux-x86_64.tar.gz
           retention-days: 7
 
   # ─────────────────────────────────────────────
